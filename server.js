@@ -1,4 +1,5 @@
 const fs = require("fs");
+const http = require("http");
 const path = require("path");
 const express = require("express");
 const mongoose = require("mongoose");
@@ -6,7 +7,7 @@ require("dotenv").config();
 
 const app = express();
 
-const PORT = Number(process.env.PORT || 3000);
+const BASE_PORT = Number(process.env.PORT || 3000);
 const HOST = process.env.HOST || "0.0.0.0";
 const MONGO_URI = process.env.MONGO_URI || "";
 
@@ -31,12 +32,10 @@ app.get("/api/health", (_req, res) => {
 });
 
 async function start() {
-  app.listen(PORT, HOST, () => {
-    console.log(`Server kjører på http://${HOST}:${PORT}`);
-  });
+  await startServer(BASE_PORT);
 
   if (!MONGO_URI) {
-    console.error("MongoDB ikke koblet: MONGO_URI mangler i .env");
+    console.warn("MongoDB ikke koblet: MONGO_URI mangler i .env");
     return;
   }
 
@@ -48,6 +47,30 @@ async function start() {
   } catch (error) {
     console.error("MongoDB tilkobling feilet:", error.message);
   }
+}
+
+function startServer(port) {
+  return new Promise((resolve, reject) => {
+    const server = http.createServer(app);
+
+    server.once("listening", () => {
+      console.log(`Server kjører på http://${HOST}:${port}`);
+      resolve(server);
+    });
+
+    server.once("error", (error) => {
+      if (error.code === "EADDRINUSE") {
+        const nextPort = port + 1;
+        console.warn(`Port ${port} er i bruk. Prøver port ${nextPort}...`);
+        resolve(startServer(nextPort));
+        return;
+      }
+
+      reject(error);
+    });
+
+    server.listen(port, HOST);
+  });
 }
 
 start();
