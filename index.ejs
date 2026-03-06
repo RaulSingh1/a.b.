@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="no">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Slingshot Smash</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="wrap">
+    <header class="top">
+      <div class="title">
+        <h1>Slingshot Smash</h1>
+        <p>Dra kula bakover og slipp for å skyte. R for restart.</p>
+      </div>
+
+      <div class="hud">
+        <div class="stat"><span>Score</span><b id="score">0</b></div>
+        <div class="stat"><span>Skudd</span><b id="shots">0</b></div>
+        <div class="stat"><span>Fiender igjen</span><b id="left">0</b></div>
+      </div>
+    </header>
+
+    <main class="stage">
+      <canvas id="game" width="1100" height="560"></canvas>
+
+      <section class="panel">
+        <div class="keys">
+          <div class="key"><kbd>Mouse</kbd><span>Dra & slipp</span></div>
+          <div class="key"><kbd>R</kbd><span>Restart</span></div>
+          <div class="key"><kbd>Space</kbd><span>Ny kule</span></div>
+        </div>
+        <div class="tips">
+          <h3>Tips</h3>
+          <ul>
+            <li>Skyt lavt for å rive ned “tårnet”.</li>
+            <li>Treff fiendene (grønne) for poeng.</li>
+            <li>Trykk <b>Space</b> hvis kula har stoppet.</li>
+          </ul>
+        </div>
+      </section>
+    </main>
+
+    <footer class="foot">
+      <small>Lagret som EJS + CSS + JS (Canvas). Kjør fra VM, f.eks. http://dns:3000 eller http://10.12.13.10:3000</small>
+    </footer>
+  </div>
+
+  <script src="angry.js" defer></script>
+</body>
+</html>
