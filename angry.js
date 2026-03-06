@@ -9,7 +9,6 @@
     // --- Utils
     const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
     const len = (x, y) => Math.hypot(x, y);
-    const rand = (a, b) => a + Math.random() * (b - a);
   
     function worldToScreenY(y) { return y; }
   
@@ -18,11 +17,6 @@
     const H = canvas.height;
   
     const GRAVITY = 1400;      // px/s^2
-    const AIR_DENSITY = 0.0017;
-    const DEFAULT_MASS = 1.0;
-    const DEFAULT_CD = 0.47;
-    const SPIN_LIFT = 0.07;
-    const SPIN_DAMP = 0.993;
     const AIR_DAMP = 0.998;    // per frame multiplier-ish
     const RESTITUTION = 0.35;  // bounce on ground/walls
     const FRICTION = 0.86;     // ground friction
@@ -50,14 +44,6 @@
         enemies: [],
         particles: [],
         lastImpactAt: 0,
-        wind: {
-          current: rand(-90, 90),
-          target: rand(-140, 140),
-          changeIn: rand(2.5, 5.5),
-          gustAmp: rand(10, 34),
-          gustFreq: rand(0.45, 0.9),
-          gustPhase: rand(0, Math.PI * 2),
-        },
       };
   
       buildLevel();
@@ -71,10 +57,6 @@
         y: sling.y,
         vx: 0,
         vy: 0,
-        mass: DEFAULT_MASS,
-        cd: DEFAULT_CD,
-        area: Math.PI * 16 * 16,
-        spin: 0,            // clockwise/counterclockwise rotation
         active: false,      // launched?
         resting: false,     // nearly stopped?
         used: false,        // one shot per ball
@@ -174,8 +156,6 @@
       const power = 7.5; // tweak
       p.vx = dx * power;
       p.vy = dy * power;
-      // Pull direction imparts spin: steeper pulls create more back/top spin.
-      p.spin = clamp((-dy * 0.03) + (dx * 0.012), -18, 18);
       p.active = true;
       p.used = true;
   
@@ -295,86 +275,8 @@
     }
   
     // --- Simulation
-    function getWindXAt(time) {
-      const w = state.wind;
-      return w.current + Math.sin(time * w.gustFreq + w.gustPhase) * w.gustAmp;
-    }
-
-    function getWindX() {
-      return getWindXAt(state.time);
-    }
-
-    function updateWind(dt) {
-      const w = state.wind;
-      w.changeIn -= dt;
-      if (w.changeIn <= 0) {
-        w.target = rand(-150, 150);
-        w.changeIn = rand(2.5, 5.5);
-        w.gustAmp = rand(10, 34);
-        w.gustFreq = rand(0.45, 0.9);
-      }
-
-      const blend = 1 - Math.exp(-dt * 1.4);
-      w.current += (w.target - w.current) * blend;
-    }
-
-    function applyProjectileForces(body, dt, windX) {
-      const relVx = body.vx - windX;
-      const relVy = body.vy;
-      const relSpeed = Math.hypot(relVx, relVy);
-      const safeSpeed = relSpeed || 1;
-
-      const dragMag = (0.5 * AIR_DENSITY * body.cd * body.area * relSpeed * relSpeed) / body.mass;
-      const dragAx = -(relVx / safeSpeed) * dragMag;
-      const dragAy = -(relVy / safeSpeed) * dragMag;
-
-      // Magnus effect: lift perpendicular to relative airflow and proportional to spin.
-      const magnusScale = (body.spin * SPIN_LIFT) / body.mass;
-      const magnusAx = -relVy * magnusScale;
-      const magnusAy = relVx * magnusScale;
-
-      body.vx += (dragAx + magnusAx) * dt;
-      body.vy += (GRAVITY + dragAy + magnusAy) * dt;
-      body.x += body.vx * dt;
-      body.y += body.vy * dt;
-      body.spin *= Math.pow(SPIN_DAMP, dt * 60);
-    }
-
-    function buildTrajectoryPreview() {
-      const dx = sling.x - state.dragX;
-      const dy = sling.y - state.dragY;
-      const power = 7.5;
-      const test = {
-        x: state.dragX,
-        y: state.dragY,
-        vx: dx * power,
-        vy: dy * power,
-        mass: DEFAULT_MASS,
-        cd: DEFAULT_CD,
-        area: Math.PI * 16 * 16,
-        spin: clamp((-dy * 0.03) + (dx * 0.012), -18, 18),
-        r: 16,
-      };
-
-      const points = [];
-      const dt = 1 / 60;
-      let t = state.time;
-      for (let i = 0; i < 80; i++) {
-        const windX = getWindXAt(t);
-        applyProjectileForces(test, dt, windX);
-
-        if (test.x - test.r < 0 || test.x + test.r > W) break;
-        if (test.y + test.r > GROUND_Y) break;
-
-        if (i % 2 === 0) points.push({ x: test.x, y: test.y });
-        t += dt;
-      }
-      return points;
-    }
-
     function step(dt) {
       state.time += dt;
-      updateWind(dt);
   
       // particles
       for (const pt of state.particles) {
@@ -396,9 +298,11 @@
   
       // projectile
       if (p.active) {
-        applyProjectileForces(p, dt, getWindX());
+        p.vy += GRAVITY * dt;
+        p.x += p.vx * dt;
+        p.y += p.vy * dt;
   
-        // tiny extra damping to avoid endless micro motion in late game
+        // air damping
         p.vx *= Math.pow(AIR_DAMP, dt * 60);
         p.vy *= Math.pow(AIR_DAMP, dt * 60);
   
@@ -406,12 +310,10 @@
         if (p.x - p.r < 0) {
           p.x = p.r;
           p.vx = -p.vx * RESTITUTION;
-          p.spin += clamp(p.vy * 0.0008, -0.5, 0.5);
         }
         if (p.x + p.r > W) {
           p.x = W - p.r;
           p.vx = -p.vx * RESTITUTION;
-          p.spin -= clamp(p.vy * 0.0008, -0.5, 0.5);
         }
   
         // ground
@@ -419,7 +321,6 @@
           p.y = GROUND_Y - p.r;
           p.vy = -p.vy * RESTITUTION;
           p.vx *= FRICTION;
-          p.spin += clamp(-p.vx * 0.0009, -0.6, 0.6);
         }
   
         // collisions with blocks
@@ -501,62 +402,6 @@
       ctx.strokeStyle = "rgba(255,255,255,0.15)";
       ctx.lineWidth = 2;
       ctx.stroke();
-
-      drawWindOverlay();
-    }
-
-    function drawWindOverlay() {
-      const windX = getWindX();
-      const dir = windX >= 0 ? 1 : -1;
-      const speed = Math.abs(windX);
-      const arrow = dir > 0 ? "->" : "<-";
-      const label = `${arrow} Wind ${(speed / 42).toFixed(1)} m/s`;
-
-      ctx.save();
-      ctx.globalAlpha = 0.35;
-      ctx.strokeStyle = "rgba(210,235,255,0.65)";
-      ctx.lineWidth = 2;
-
-      const laneY = [88, 132, 176, 220, 264];
-      for (let i = 0; i < laneY.length; i++) {
-        const y = laneY[i];
-        const stride = 120;
-        const flow = (state.time * speed * 0.6 + i * 34) % stride;
-        for (let x = -stride; x < W + stride; x += stride) {
-          const x0 = x + (dir > 0 ? flow : -flow);
-          const x1 = x0 + dir * (26 + speed * 0.09);
-          ctx.beginPath();
-          ctx.moveTo(x0, y);
-          ctx.lineTo(x1, y);
-          ctx.stroke();
-        }
-      }
-
-      ctx.globalAlpha = 0.9;
-      ctx.fillStyle = "rgba(255,255,255,0.88)";
-      ctx.font = "600 16px system-ui, -apple-system, Segoe UI, Roboto";
-      ctx.textAlign = "right";
-      ctx.fillText(label, W - 22, 36);
-      ctx.restore();
-    }
-
-    function drawTrajectoryPreview() {
-      if (!state.dragging || state.projectile.active) return;
-      const points = buildTrajectoryPreview();
-      if (points.length === 0) return;
-
-      ctx.save();
-      for (let i = 0; i < points.length; i++) {
-        const t = i / points.length;
-        const a = 0.2 + (1 - t) * 0.45;
-        const r = 2 + (1 - t) * 1.4;
-        ctx.globalAlpha = a;
-        ctx.fillStyle = "rgba(255,255,255,0.92)";
-        ctx.beginPath();
-        ctx.arc(points[i].x, points[i].y, r, 0, Math.PI * 2);
-        ctx.fill();
-      }
-      ctx.restore();
     }
   
     function drawSling() {
@@ -740,7 +585,6 @@
       // if dragging, draw ghost projectile at drag point
       const p = state.projectile;
       if (!p.active && state.dragging) {
-        drawTrajectoryPreview();
         ctx.save();
         ctx.globalAlpha = 0.55;
         ctx.fillStyle = p.color;
